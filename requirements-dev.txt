@@ -1,0 +1,3 @@
+-r requirements-build.txt
+pytest==8.4.1
+

@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: safesweep
+      POSTGRES_PASSWORD: safesweep
+      POSTGRES_DB: safesweep_portal
+    ports:
+      - "5432:5432"
+    volumes:
+      - safesweep_postgres:/var/lib/postgresql/data
+
+volumes:
+  safesweep_postgres:

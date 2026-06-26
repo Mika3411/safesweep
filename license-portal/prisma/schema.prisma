@@ -1,0 +1,199 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  CUSTOMER
+  ADMIN
+}
+
+enum LicenseStatus {
+  ACTIVE
+  EXPIRED
+  SUSPENDED
+  REVOKED
+}
+
+enum ProductCode {
+  ENDPOINT
+  SERVER
+  MOBILE
+}
+
+enum ValidationResult {
+  ALLOWED
+  DENIED
+}
+
+enum ValidationAction {
+  CREATED
+  VALIDATED
+  DEVICE_ACTIVATED
+  DEVICE_REACTIVATED
+  DEVICE_LIMIT_REACHED
+  EXPIRED_DENIED
+  SUSPENDED_DENIED
+  REVOKED_DENIED
+  NOT_FOUND
+}
+
+enum StripeWebhookEventStatus {
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
+model User {
+  id                       String     @id @default(uuid()) @db.Uuid
+  email                    String     @unique
+  name                     String
+  company                  String?
+  passwordHash             String
+  sessionVersion           Int        @default(0)
+  role                     UserRole   @default(CUSTOMER)
+  stripeCustomerId         String?    @unique
+  passwordResetTokenHash   String?
+  passwordResetTokenExpiry DateTime?
+  createdAt                DateTime   @default(now())
+  updatedAt                DateTime   @updatedAt
+  licenses                 License[]
+  invoices                 Invoice[]
+  payments                 Payment[]
+  auditLogs                AuditLog[]
+}
+
+model License {
+  id                   String              @id @default(uuid()) @db.Uuid
+  publicId             String              @unique
+  keyHash              String              @unique
+  keyPrefix            String
+  encryptedLicenseKey  String?             @db.Text
+  licenseKeyRevealedAt DateTime?
+  product              ProductCode
+  status               LicenseStatus       @default(ACTIVE)
+  expiresAt            DateTime
+  deviceLimit          Int
+  seatCount            Int
+  subscriptionId       String?             @unique
+  latestInvoiceId      String?
+  ownerId              String              @db.Uuid
+  owner                User                @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  devices              Device[]
+  validations          LicenseValidation[]
+  invoices             Invoice[]
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  @@index([ownerId])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+model Device {
+  id              String              @id @default(uuid()) @db.Uuid
+  licenseId       String              @db.Uuid
+  fingerprintHash String
+  name            String
+  platform        String?
+  activatedAt     DateTime            @default(now())
+  deactivatedAt   DateTime?
+  lastSeenAt      DateTime?
+  license         License             @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+  validations     LicenseValidation[]
+
+  @@unique([licenseId, fingerprintHash])
+  @@index([licenseId, deactivatedAt])
+}
+
+model LicenseValidation {
+  id              String           @id @default(uuid()) @db.Uuid
+  licenseId       String?          @db.Uuid
+  deviceId        String?          @db.Uuid
+  fingerprintHash String?
+  action          ValidationAction
+  result          ValidationResult
+  reason          String?
+  ipHash          String?
+  userAgent       String?
+  createdAt       DateTime         @default(now())
+  license         License?         @relation(fields: [licenseId], references: [id], onDelete: SetNull)
+  device          Device?          @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@index([licenseId, createdAt])
+  @@index([fingerprintHash, createdAt])
+}
+
+model Invoice {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @db.Uuid
+  licenseId        String?   @db.Uuid
+  stripeInvoiceId  String?   @unique
+  number           String
+  amountCents      Int
+  currency         String    @default("eur")
+  status           String
+  hostedInvoiceUrl String?
+  invoicePdfUrl    String?
+  paidAt           DateTime?
+  dueAt            DateTime?
+  createdAt        DateTime  @default(now())
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  license          License?  @relation(fields: [licenseId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([licenseId])
+}
+
+model Payment {
+  id                      String   @id @default(uuid()) @db.Uuid
+  userId                  String?  @db.Uuid
+  stripePaymentIntentId   String?  @unique
+  stripeInvoiceId         String?  @unique
+  stripeSubscriptionId    String?
+  stripeCheckoutSessionId String?  @unique
+  amountCents             Int
+  currency                String   @default("eur")
+  status                  String
+  method                  String?
+  createdAt               DateTime @default(now())
+  user                    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([stripeSubscriptionId])
+}
+
+model StripeWebhookEvent {
+  id             String                   @id @default(uuid()) @db.Uuid
+  eventId        String                   @unique
+  type           String
+  status         StripeWebhookEventStatus @default(PROCESSING)
+  error          String?                  @db.Text
+  receivedCount  Int                      @default(1)
+  lastReceivedAt DateTime                 @default(now())
+  processedAt    DateTime?
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  @@index([lastReceivedAt])
+  @@index([status, lastReceivedAt])
+  @@map("stripe_webhook_events")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  actorId   String?  @db.Uuid
+  action    String
+  target    String
+  metadata  Json?
+  ipHash    String?
+  createdAt DateTime @default(now())
+  actor     User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId, createdAt])
+  @@index([target])
+}
