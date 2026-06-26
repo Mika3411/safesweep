@@ -113,6 +113,22 @@ describe("rate limiter", () => {
     });
   });
 
+  it("can use local memory in production when explicitly enabled", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("RATE_LIMIT_MEMORY_FALLBACK", "true");
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+
+    expect(await checkRateLimit({ key: "prod-test-login:1", limit: 1, windowMs: 10_000 })).toMatchObject({
+      allowed: true,
+      backend: "memory"
+    });
+    expect(await checkRateLimit({ key: "prod-test-login:1", limit: 1, windowMs: 10_000 })).toMatchObject({
+      allowed: false,
+      backend: "memory"
+    });
+  });
+
   it("falls back to local memory in development when Upstash is unavailable", async () => {
     vi.stubEnv("NODE_ENV", "development");
     process.env.UPSTASH_REDIS_REST_URL = "https://redis.example";

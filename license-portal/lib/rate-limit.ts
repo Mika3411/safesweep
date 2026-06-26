@@ -46,6 +46,10 @@ function isDevelopment() {
   return process.env.NODE_ENV === "development";
 }
 
+function allowsMemoryFallback() {
+  return process.env.RATE_LIMIT_MEMORY_FALLBACK === "true";
+}
+
 function getUpstashConfig() {
   const url = process.env.UPSTASH_REDIS_REST_URL?.replace(/\/$/, "");
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -92,7 +96,7 @@ function checkLocalRateLimit({ key, limit, windowMs }: RateLimitOptions): RateLi
 }
 
 function fallbackOrUnavailable(options: RateLimitOptions): RateLimitResult {
-  return isDevelopment() ? checkLocalRateLimit(options) : unavailable(options.windowMs);
+  return isDevelopment() || allowsMemoryFallback() ? checkLocalRateLimit(options) : unavailable(options.windowMs);
 }
 
 export async function checkRateLimit({ key, limit, windowMs }: RateLimitOptions): Promise<RateLimitResult> {
